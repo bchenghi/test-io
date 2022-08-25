@@ -1,28 +1,17 @@
 package testio.utils;
 
-import jmutation.model.MavenProject;
-import jmutation.model.Project;
-import jmutation.model.ProjectType;
-import jmutation.model.TestCase;
-import jmutation.model.ast.JdtMethodRetriever;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.Annotation;
-import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.jdt.core.dom.PackageDeclaration;
+import org.eclipse.jdt.core.dom.CompilationUnit;;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.StringJoiner;
 
 /**
  * Given a maven or gradle project path, we parse it into a project
