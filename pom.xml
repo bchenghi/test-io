@@ -55,11 +55,5 @@
             <artifactId>trace-diff</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
-<!--        To remove mutation framework -->
-        <dependency>
-            <groupId>java-mutation-framework</groupId>
-            <artifactId>java-mutation-framework</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
     </dependencies>
 </project>

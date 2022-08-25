@@ -1,3 +1,6 @@
 [submodule "trace-model"]
 	path = trace-model
 	url = https://github.com/bchenghi/trace-model.git
+[submodule "trace-diff"]
+	path = trace-diff
+	url = https://github.com/llmhyy/trace-diff.git

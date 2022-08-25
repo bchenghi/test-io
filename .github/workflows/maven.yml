@@ -29,5 +29,9 @@ jobs:
       run: |
         cd trace-model
         mvn install --file pom.xml
+    - name: Maven install trace-diff
+      run: |
+        cd trace-diff
+        mvn install --file pom.xml
     - name: Build with Maven
       run: mvn -B package --file pom.xml
