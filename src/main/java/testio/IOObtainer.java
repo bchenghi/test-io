@@ -128,68 +128,6 @@ public class IOObtainer {
         return inputs;
     }
 
-//    public static List<TestIO> getTestInputOutputs(InstrumentationResult instrumentationResult,
-//                                                   InstrumentationResult instrumentationResultWithAssertions,
-//                                                   File projectRoot, String testClass, String testSimpleName) {
-//        Trace trace = instrumentationResult.getMainTrace();
-//        Trace traceWithAssertion = instrumentationResultWithAssertions.getMainTrace();
-//        List<TraceNode> executionList = trace.getExecutionList();
-//        List<TraceNode> executionListWithAssertions = traceWithAssertion.getExecutionList();
-//        List<TestIO> result = new ArrayList<>();
-//        Set<TraceNode> pastOutputNodes = new HashSet<>();
-//        if (executionList.isEmpty()) {
-//            return result;
-//        }
-//        // Store the outputs and nodesToIgnore. Then rerun the loop, and only obtain input for last one.
-//        int lastEncounteredOutputIdx = -1;
-//        for (int i = 0; i < executionList.size(); i++) {
-//            TraceNode traceNode = executionList.get(i);
-//            TraceNode traceNodeWithAssertion = executionListWithAssertions.get(i);
-//            BreakPoint breakPoint = traceNode.getBreakPoint();
-//            String currentMethodName = breakPoint.getMethodName();
-//            if (currentMethodName.equals("<init>") || currentMethodName.equals("<clinit>")) {
-//                continue;
-//            }
-//            boolean shouldCallGetOutput = isOutputNode(traceNodeWithAssertion);
-//            if (shouldCallGetOutput) {
-//                VarValue outputValue = getOutput(traceNode, traceNodeWithAssertion);
-//                IOModel output = new IOModel(outputValue, traceNode);
-//                result.add(new TestIO(output));
-//                int[] startAndEndLineNums = getLineNumsForAssertion(traceNode, projectRoot);
-//                List<TraceNode> assertionTraceNodes = getTraceNodesBetweenLineNums(executionList,
-//                        traceNode.getDeclaringCompilationUnitName(), startAndEndLineNums);
-//                pastOutputNodes.addAll(assertionTraceNodes);
-//                lastEncounteredOutputIdx = i;
-//            }
-//        }
-//
-//        // If crashed, obtain the last read/written var
-//        if (instrumentationResult.hasThrownException()) {
-//            TestIO lastIOForCrashingTrace = getTestIOForCrashingTrace(instrumentationResult, pastOutputNodes,
-//                    testClass, testSimpleName);
-//            if (lastIOForCrashingTrace != null) {
-//                result.add(lastIOForCrashingTrace);
-//            }
-//        } else {
-//            TraceNode traceNode = executionList.get(lastEncounteredOutputIdx);
-//            TraceNode traceNodeWithAssertion = executionListWithAssertions.get(lastEncounteredOutputIdx);
-//            VarValue outputValue = getOutput(traceNode, traceNodeWithAssertion);
-//
-//            Set<IOModel> inputSet = getInputsFromDataDep(outputValue, traceNode, trace, new HashSet<>(),
-//                    pastOutputNodes, testClass, testSimpleName);
-//            IOModel output = new IOModel(outputValue, traceNode);
-//            int[] startAndEndLineNums = getLineNumsForAssertion(traceNode, projectRoot);
-//            List<TraceNode> assertionTraceNodes = getTraceNodesBetweenLineNums(executionList,
-//                    traceNode.getDeclaringCompilationUnitName(), startAndEndLineNums);
-//            pastOutputNodes.addAll(assertionTraceNodes);
-//
-//            List<IOModel> inputs = new ArrayList<>(inputSet);
-//            TestIO testIO = new TestIO(inputs, output);
-//            result.add(testIO);
-//        }
-//        return result;
-//    }
-
     private static TestIO getTestIOForCrashingTrace(InstrumentationResult instrumentationResult,
                                                     Set<TraceNode> pastOutputNodes, String testClass,
                                                     String testSimpleName) {
@@ -257,12 +195,19 @@ public class IOObtainer {
             if (nodesToIgnore.contains(output)) {
                 return result;
             }
-            result.add(new IOModel(output, outputNode));
+            if (dataDependency == null) {
+                result.add(new IOModel(output, outputNode));
+            } else {
+                result.add(new IOModel(output, dataDependency));
+            }
             return result;
         }
         if (dataDependency.getWrittenVariables().contains(output) &&
                 nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
-            result.add(new IOModel(output, outputNode));
+            TraceNode higherDataDependency = trace.findDataDependency(dataDependency, output);
+            if (higherDataDependency == null) {
+                result.add(new IOModel(output, dataDependency));
+            }
         }
         for (VarValue readVarValue : dataDependency.getReadVariables()) {
             result.addAll(getInputsFromDataDep(readVarValue, dataDependency, trace, encounteredVars, nodesToIgnore,
