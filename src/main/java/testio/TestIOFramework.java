@@ -38,7 +38,14 @@ public class TestIOFramework {
         List<IOModel> outputsFromOriginalTrace = IOObtainer.getTestOutputs(originalResult,
                 originalResultWithAssertions);
         List<IOModel[]> outputPairs = formIOModelPairs(outputsFromMutatedTrace, outputsFromOriginalTrace, pairList);
-        if (outputsFromMutatedTrace.isEmpty()) {
+        if (outputPairs.isEmpty()) {
+            if (!outputsFromMutatedTrace.isEmpty()) {
+                IOModel output = outputsFromMutatedTrace.get(outputsFromMutatedTrace.size() - 1);
+                List<IOModel> inputsFromMutatedTrace = IOObtainer.getTestInputsFromOutputs(
+                        output,
+                        outputsFromMutatedTrace, mutatedProjectRoot, testClass, testSimpleName, mutatedResult);
+                return new TestIO(inputsFromMutatedTrace, output);
+            }
             return null;
         }
         IOModel[] failingOutputs = outputPairs.get(outputPairs.size() - 1);
@@ -111,6 +118,9 @@ public class TestIOFramework {
         for (IOModel buggyTestIO : buggyIOs) {
             TraceNode outputNode = buggyTestIO.getTraceNode();
             TraceNodePair traceNodePair = pairList.findByBeforeNode(outputNode);
+            if (traceNodePair == null) {
+                return new ArrayList<>();
+            }
             TraceNode correspondingNormalOutputNode = traceNodePair.getAfterNode();
             IOModel correspondingNormalIOModel = mapOfIOModelToIOFromNormalTrace.get(correspondingNormalOutputNode);
             IOModel[] ioModelPair = new IOModel[] {buggyTestIO, correspondingNormalIOModel};

@@ -49,8 +49,7 @@ public class IOObtainer {
             }
             boolean shouldCallGetOutput = isOutputNode(traceNodeWithAssertion);
             if (shouldCallGetOutput) {
-                VarValue outputValue = getOutput(traceNode, traceNodeWithAssertion);
-                IOModel output = new IOModel(outputValue, traceNode);
+                IOModel output = getOutput(traceNode, traceNodeWithAssertion);
                 result.add(output);
             }
         }
@@ -183,25 +182,34 @@ public class IOObtainer {
                                                      String testClass, String testSimpleName) {
         Set<IOModel> result = new HashSet<>();
         int varID = System.identityHashCode(output);
+        varID *= 13;
+        varID += outputNode.getOrder();
         if (encounteredVars.contains(varID)) {
             return result;
         }
         encounteredVars.add(varID);
         TraceNode dataDependency = trace.findDataDependency(outputNode, output);
-        if (dataDependency == null || dataDependency.getReadVariables().isEmpty()) {
-            if (!nodeIsInMethod(outputNode, testClass, testSimpleName)) {
-                return result;
-            }
-            if (nodesToIgnore.contains(output)) {
-                return result;
-            }
-            if (dataDependency == null) {
+
+        // For values in top layer that is read
+        if (dataDependency == null) {
+            // Check current node's (read) var for input.
+            if (nodeIsInMethod(outputNode, testClass, testSimpleName) && !nodesToIgnore.contains(output)) {
                 result.add(new IOModel(output, outputNode));
-            } else {
+            }
+            return result;
+        }
+
+        // For values in top layer that is only written e.g. 2 in funcCall(2).
+        if (dataDependency.getReadVariables().isEmpty()) {
+            if (nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)
+                    && dataDependency.getWrittenVariables().contains(output)) {
                 result.add(new IOModel(output, dataDependency));
             }
             return result;
         }
+
+        // For intermediate dependency, but value is written in it. (i.e. still has parent data dependencies, but value
+        // was written in this traceNode, so must capture.
         if (dataDependency.getWrittenVariables().contains(output) &&
                 nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
             TraceNode higherDataDependency = trace.findDataDependency(dataDependency, output);
@@ -209,6 +217,18 @@ public class IOObtainer {
                 result.add(new IOModel(output, dataDependency));
             }
         }
+//
+//        if (dataDependency.getReadVariables().isEmpty()) {
+//            if (!nodeIsInMethod(dataDependency, testClass, testSimpleName)) {
+//                return result;
+//            }
+//            if (nodesToIgnore.contains(dataDependency)) {
+//                return result;
+//            }
+//            result.add(new IOModel(output, dataDependency));
+//            return result;
+//        }
+
         for (VarValue readVarValue : dataDependency.getReadVariables()) {
             result.addAll(getInputsFromDataDep(readVarValue, dataDependency, trace, encounteredVars, nodesToIgnore,
                     testClass, testSimpleName));
@@ -268,7 +288,7 @@ public class IOObtainer {
      * @param node
      * @return
      */
-    private static VarValue getOutput(TraceNode node, TraceNode traceNodeWithAssertion) {
+    private static IOModel getOutput(TraceNode node, TraceNode traceNodeWithAssertion) {
         List<VarValue> writtenVarValues = traceNodeWithAssertion.getWrittenVariables();
         for (VarValue varValue : writtenVarValues) {
             Variable var = varValue.getVariable();
@@ -284,7 +304,7 @@ public class IOObtainer {
                     List<VarValue> readVarVals = current.getReadVariables();
                     for (VarValue readVarVal : readVarVals) {
                         if (readVarVal.getStringValue().equals(varValue.getStringValue())) {
-                            return readVarVal;
+                            return new IOModel(readVarVal, current);
                         }
                     }
                     current = current.getStepOverPrevious();
@@ -297,7 +317,7 @@ public class IOObtainer {
                 while (current != null) {
                     List<VarValue> readVarVals = current.getReadVariables();
                     for (VarValue readVarVal : readVarVals) {
-                        return readVarVal;
+                        return new IOModel(readVarVal, current);
                     }
                     current = current.getStepOverPrevious();
                 }
