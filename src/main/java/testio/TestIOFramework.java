@@ -119,7 +119,7 @@ public class TestIOFramework {
             TraceNode outputNode = buggyTestIO.getTraceNode();
             TraceNodePair traceNodePair = pairList.findByBeforeNode(outputNode);
             if (traceNodePair == null) {
-                return new ArrayList<>();
+                continue;
             }
             TraceNode correspondingNormalOutputNode = traceNodePair.getAfterNode();
             IOModel correspondingNormalIOModel = mapOfIOModelToIOFromNormalTrace.get(correspondingNormalOutputNode);

@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public class IOObtainer {
     public static List<IOModel> getTestOutputs(InstrumentationResult instrumentationResult,
@@ -201,14 +202,30 @@ public class IOObtainer {
 
         // For values in top layer that is only written e.g. 2 in funcCall(2).
         if (dataDependency.getReadVariables().isEmpty()) {
-            if (nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)
-                    && dataDependency.getWrittenVariables().contains(output)) {
-                result.add(new IOModel(output, dataDependency));
+            if (nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
+                VarValue outputVal;
+                if (dataDependency.getWrittenVariables().contains(output)) {
+                    // Check using var ID.
+                    outputVal = output;
+                } else {
+                    // Check using Alias Var ID (Heap address). For arrays, etc.
+                    outputVal = dataDependency.getWrittenVariables().stream().filter(writtenVarVal ->
+                            writtenVarVal.getVariable().getAliasVarID() != null &&
+                                    writtenVarVal.getVariable().getAliasVarID().equals(output.getVariable().getAliasVarID())).
+                            findFirst().
+                            orElse(null);
+                }
+
+                if (outputVal == null) {
+                    return result;
+                }
+
+                result.add(new IOModel(outputVal, dataDependency));
             }
             return result;
         }
 
-        // For intermediate dependency, but value is written in it. (i.e. still has parent data dependencies, but value
+        // For intermediate dependency, but value is written in it. i.e. still has parent data dependencies, but value
         // was written in this traceNode, so must capture.
         if (dataDependency.getWrittenVariables().contains(output) &&
                 nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
@@ -217,17 +234,6 @@ public class IOObtainer {
                 result.add(new IOModel(output, dataDependency));
             }
         }
-//
-//        if (dataDependency.getReadVariables().isEmpty()) {
-//            if (!nodeIsInMethod(dataDependency, testClass, testSimpleName)) {
-//                return result;
-//            }
-//            if (nodesToIgnore.contains(dataDependency)) {
-//                return result;
-//            }
-//            result.add(new IOModel(output, dataDependency));
-//            return result;
-//        }
 
         for (VarValue readVarValue : dataDependency.getReadVariables()) {
             result.addAll(getInputsFromDataDep(readVarValue, dataDependency, trace, encounteredVars, nodesToIgnore,
