@@ -25,7 +25,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
-import java.util.stream.Stream;
 
 public class IOObtainer {
     public static List<IOModel> getTestOutputs(InstrumentationResult instrumentationResult,

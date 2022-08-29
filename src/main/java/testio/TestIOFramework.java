@@ -123,6 +123,9 @@ public class TestIOFramework {
             }
             TraceNode correspondingNormalOutputNode = traceNodePair.getAfterNode();
             IOModel correspondingNormalIOModel = mapOfIOModelToIOFromNormalTrace.get(correspondingNormalOutputNode);
+            if (correspondingNormalIOModel == null) {
+                continue;
+            }
             IOModel[] ioModelPair = new IOModel[] {buggyTestIO, correspondingNormalIOModel};
             result.add(ioModelPair);
         }
