@@ -38,36 +38,26 @@ public class TestIOFramework {
         List<IOModel> outputsFromOriginalTrace = IOObtainer.getTestOutputs(originalResult,
                 originalResultWithAssertions);
         List<IOModel[]> outputPairs = formIOModelPairs(outputsFromMutatedTrace, outputsFromOriginalTrace, pairList);
-        if (outputPairs.isEmpty()) {
-            if (!outputsFromMutatedTrace.isEmpty()) {
-                IOModel output = outputsFromMutatedTrace.get(outputsFromMutatedTrace.size() - 1);
-                List<IOModel> inputsFromMutatedTrace = IOObtainer.getTestInputsFromOutputs(
-                        output,
-                        outputsFromMutatedTrace, mutatedProjectRoot, testClass, testSimpleName, mutatedResult);
-                return new TestIO(inputsFromMutatedTrace, output);
-            }
+        if (outputsFromMutatedTrace.isEmpty() || outputsFromMutatedTrace.get(outputsFromMutatedTrace.size() - 1) == null) {
+            // Could not get final output (perhaps the program crashed, and cause of crash could not be determined)
             return null;
         }
         IOModel[] failingOutputs = outputPairs.get(outputPairs.size() - 1);
         List<IOModel> inputsFromMutatedTrace = IOObtainer.getTestInputsFromOutputs(failingOutputs[0],
                 outputsFromMutatedTrace, mutatedProjectRoot, testClass, testSimpleName, mutatedResult);
-        List<IOModel> inputsFromNormalTrace = IOObtainer.getTestInputsFromOutputs(failingOutputs[1],
-                outputsFromOriginalTrace, projectRoot, testClass, testSimpleName, originalResult);
-        List<IOModel> missingIOModelsFromBuggyIOs = getMissingIOModels(inputsFromMutatedTrace, inputsFromNormalTrace);
-        List<IOModel> createdIOModelsForBuggyIO = createIOModels(missingIOModelsFromBuggyIOs, pairList);
-        inputsFromMutatedTrace.addAll(createdIOModelsForBuggyIO);
-        return new TestIO(inputsFromMutatedTrace, failingOutputs[0]);
-    }
-
-    private Map<TraceNode, TestIO> convertToMapOfOutputNodeToIO(List<TestIO> testIOList) {
-        Map<TraceNode, TestIO> result = new HashMap<>();
-        for (TestIO testIO : testIOList) {
-            TraceNode outputNode = testIO.getOutputNode();
-            result.put(outputNode, testIO);
+        // If there is a corresponding output node in normal trace, obtain its inputs, and add any missing inputs in buggy inputs
+        // (mutation could have led to breaks in data deps and some inputs cant be obtained with just mutated trace)
+        if (failingOutputs[1] != null) {
+            List<IOModel> inputsFromNormalTrace = IOObtainer.getTestInputsFromOutputs(failingOutputs[1],
+                    outputsFromOriginalTrace, projectRoot, testClass, testSimpleName, originalResult);
+            List<IOModel> missingIOModelsFromBuggyIOs = getMissingIOModels(inputsFromMutatedTrace, inputsFromNormalTrace);
+            List<IOModel> createdIOModelsForBuggyIO = createIOModels(missingIOModelsFromBuggyIOs, pairList);
+            inputsFromMutatedTrace.addAll(createdIOModelsForBuggyIO);
         }
+        TestIO result = new TestIO(inputsFromMutatedTrace, failingOutputs[0]);
+        result.setHasPassed(mutatedResult.hasSucceeded());
         return result;
     }
-
 
     private Map<TraceNode, IOModel> convertToMapOfIOModelToIO(List<IOModel> ioModelList) {
         Map<TraceNode, IOModel> result = new HashMap<>();
@@ -77,30 +67,6 @@ public class TestIOFramework {
         }
         return result;
     }
-    /**
-     * For a given output, obtain the corresponding output in the other list of IOs.
-     * @param buggyIOs
-     * @param normalIOs
-     * @param pairList
-     * @return
-     */
-    private List<TestIO[]> formTestIOPairs(List<TestIO> buggyIOs, List<TestIO> normalIOs, PairList pairList) {
-        // Use pair list to match the test ios.
-        // For buggy io that has no match in output, e.g. a crash, use order for now...
-        // 1st IO in buggy match to 1st IO in normal.
-        List<TestIO[]> result = new ArrayList<>();
-        Map<TraceNode, TestIO> mapOfNodeToIOFromNormalTrace = convertToMapOfOutputNodeToIO(normalIOs);
-        for (TestIO buggyTestIO : buggyIOs) {
-            TraceNode outputNode = buggyTestIO.getOutputNode();
-            TraceNodePair traceNodePair = pairList.findByBeforeNode(outputNode);
-            TraceNode correspondingNormalOutputNode = traceNodePair.getAfterNode();
-            TestIO correspondingNormalTestIO = mapOfNodeToIOFromNormalTrace.get(correspondingNormalOutputNode);
-            TestIO[] testIOPair = new TestIO[] {buggyTestIO, correspondingNormalTestIO};
-            result.add(testIOPair);
-        }
-        return result;
-    }
-
 
     /**
      * For a given input/output, obtain the corresponding input/output in the other list of inputs/outputs.
@@ -115,17 +81,22 @@ public class TestIOFramework {
         // 1st IO in buggy match to 1st IO in normal.
         List<IOModel[]> result = new ArrayList<>();
         Map<TraceNode, IOModel> mapOfIOModelToIOFromNormalTrace = convertToMapOfIOModelToIO(normalIOs);
-        for (IOModel buggyTestIO : buggyIOs) {
+        for (int i = 0; i < buggyIOs.size(); i++) {
+            IOModel buggyTestIO = buggyIOs.get(i);
+            if (buggyTestIO == null) {
+                IOModel[] ioModelPair = new IOModel[] {null, null};
+                result.add(ioModelPair);
+                continue;
+            }
             TraceNode outputNode = buggyTestIO.getTraceNode();
             TraceNodePair traceNodePair = pairList.findByBeforeNode(outputNode);
             if (traceNodePair == null) {
+                IOModel[] ioModelPair = new IOModel[] {buggyTestIO, null};
+                result.add(ioModelPair);
                 continue;
             }
             TraceNode correspondingNormalOutputNode = traceNodePair.getAfterNode();
             IOModel correspondingNormalIOModel = mapOfIOModelToIOFromNormalTrace.get(correspondingNormalOutputNode);
-            if (correspondingNormalIOModel == null) {
-                continue;
-            }
             IOModel[] ioModelPair = new IOModel[] {buggyTestIO, correspondingNormalIOModel};
             result.add(ioModelPair);
         }

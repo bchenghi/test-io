@@ -57,9 +57,7 @@ public class IOObtainer {
         // If crashed, obtain the last read/written var
         if (instrumentationResult.hasThrownException()) {
             IOModel outputForCrashingTrace = getOutputForCrashingTrace(instrumentationResult);
-            if (outputForCrashingTrace != null) {
-                result.add(outputForCrashingTrace);
-            }
+            result.add(outputForCrashingTrace);
         }
         return result;
     }
@@ -67,18 +65,20 @@ public class IOObtainer {
     public static IOModel getOutputForCrashingTrace(InstrumentationResult instrumentationResult) {
         Trace trace = instrumentationResult.getMainTrace();
         List<TraceNode> executionList = trace.getExecutionList();
-        int idx = executionList.size() - 1;
-        while (idx >= 0) {
+        int lastIdx = executionList.size() - 1;
+        int idx = lastIdx;
+        int numOfNodesToCheck = 2;
+        String programMsg = instrumentationResult.getProgramMsg();
+        String stringValOfOutput = programMsg.substring(programMsg.indexOf(';') + 1);
+        while (idx > lastIdx - numOfNodesToCheck) {
             TraceNode current = executionList.get(idx);
             List<VarValue> varValues = new ArrayList<>(current.getWrittenVariables());
             varValues.addAll(current.getReadVariables());
-            String programMsg = instrumentationResult.getProgramMsg();
-            String stringValOfOutput = programMsg.substring(programMsg.indexOf(';') + 1);
             for (VarValue varValue : varValues) {
                 // Array element, index out of bounds, can use varID to check idx.
                 // e.g. varID = 1365008457[-1], check if [-1] inside varID
                 boolean shouldSkip = true;
-                if (!stringValOfOutput.equals(varValue.getStringValue())) {
+                if (stringValOfOutput.equals(varValue.getStringValue())) {
                     shouldSkip = false;
                 } else if (varValue instanceof ReferenceValue) {
                     Variable var = varValue.getVariable();
@@ -97,6 +97,7 @@ public class IOObtainer {
             }
             idx--;
         }
+
         return null;
     }
 
@@ -181,9 +182,7 @@ public class IOObtainer {
                                                      Set<Integer> encounteredVars, Set<TraceNode> nodesToIgnore,
                                                      String testClass, String testSimpleName) {
         Set<IOModel> result = new HashSet<>();
-        int varID = System.identityHashCode(output);
-        varID *= 13;
-        varID += outputNode.getOrder();
+        int varID = hashVarValAndNode(output, outputNode);
         if (encounteredVars.contains(varID)) {
             return result;
         }
@@ -244,47 +243,6 @@ public class IOObtainer {
     private static boolean nodeIsInMethod(TraceNode node, String className, String methodName) {
         String nodeFullMethodName = node.getDeclaringCompilationUnitName() + "#" + node.getMethodName();
         return nodeFullMethodName.equals(className + "#" + methodName);
-    }
-
-    private static List<VarValue> getInputsFromTrace(List<TraceNode> executionList, TraceNode assertionNode, Map<String, List<VarValue>> referenceVarToValMap, Map<String, VarValue> primitiveVarToValMap, File projectRoot) {
-        int[] startAndEndLineNums = getLineNumsForAssertion(assertionNode, projectRoot);
-        List<TraceNode> assertionTraceNodes = getTraceNodesBetweenLineNums(executionList, assertionNode.getDeclaringCompilationUnitName(), startAndEndLineNums);
-        List<VarValue> inputs = new ArrayList<>();
-        Set<String> alreadyAddedInputs = new HashSet<>();
-        for (TraceNode assertionTraceNode : assertionTraceNodes) {
-           List<VarValue> varVals = new ArrayList<>();
-           varVals.addAll(assertionTraceNode.getReadVariables());
-           varVals.addAll(assertionTraceNode.getWrittenVariables());
-           for (VarValue readVarVal : varVals) {
-               Variable var = readVarVal.getVariable();
-               if (readVarVal instanceof ReferenceValue) {
-                   List<VarValue> newInputs = referenceVarToValMap.get(formKeyForInputMap(var));
-                   if (newInputs == null) {
-                       continue;
-                   }
-                   for (VarValue newInput : newInputs) {
-                       String varID = newInput.getVarID();
-                       if (alreadyAddedInputs.contains(varID)) {
-                           continue;
-                       }
-                       alreadyAddedInputs.add(varID);
-                       inputs.add(newInput);
-                   }
-               } else {
-                   VarValue newInput = primitiveVarToValMap.get(formKeyForInputMap(var));
-                   if (newInput == null) {
-                       continue;
-                   }
-                   String varID = newInput.getVarID();
-                   if (alreadyAddedInputs.contains(varID)) {
-                       continue;
-                   }
-                   alreadyAddedInputs.add(varID);
-                   inputs.add(newInput);
-               }
-           }
-       }
-       return inputs;
     }
 
     /**
@@ -364,76 +322,6 @@ public class IOObtainer {
         return varName.equals("actual") || varName.equals("actuals") || varName.equals("condition") || varName.equals("object");
     }
 
-    private static void setVarVals(Map<String, VarValue> primitiveVarToVal, Map<String, List<VarValue>> referenceVarToVal, TraceNode traceNode) {
-        List<VarValue> varVals = new ArrayList<>();
-        varVals.addAll(traceNode.getReadVariables());
-        varVals.addAll(traceNode.getWrittenVariables());
-        for (VarValue writtenVarVal : varVals) {
-            Variable writtenVariable = writtenVarVal.getVariable();
-            String key = formKeyForInputMap(writtenVariable);
-            // Ignore objects e.g. Object x = constructor(); x is not user defined input
-            if (writtenVarVal instanceof ReferenceValue) {
-                if (shouldGetInputsForRefVal(traceNode)) {
-                    List<VarValue> initializersForRefVal = new ArrayList<>();
-                    if (referenceVarToVal.containsKey(key)) {
-                        initializersForRefVal = referenceVarToVal.get(key);
-                    }
-                    initializersForRefVal.addAll(getInitializersForReferenceVal(traceNode, (ReferenceValue) writtenVarVal));
-                    referenceVarToVal.put(key, initializersForRefVal);
-                    continue;
-                }
-            }
-
-            primitiveVarToVal.put(key, writtenVarVal);
-        }
-    }
-
-    private static String formKeyForInputMap(Variable var) {
-        // Location of var has to be appended as the location is not used in equals method for vars.
-        // i.e. int x = 1; and func(int x);
-        // Both x will be treated the same without location when they should be different inputs
-        String varLocation;
-        if (var instanceof LocalVar) {
-            varLocation = ((LocalVar) var).getLocationClass();
-        } else if (var instanceof FieldVar) {
-            varLocation = ((FieldVar) var).getDeclaringType();
-        } else {
-            varLocation = "";
-        }
-        return var.toString() + varLocation;
-    }
-
-    private static List<VarValue> getInitializersForReferenceVal(TraceNode referenceValNode, ReferenceValue refValue) {
-        TraceNode stepOverPrevious = referenceValNode.getStepOverPrevious();
-        List<VarValue> result = new ArrayList<>();
-        List<VarValue> fieldsInReferenceVal = refValue.getChildren();
-        // The written vals could be arguments passed into the ref, however, not all are stored in the reference obj.
-        // Use getChildren to obtain the fields in the obj, and check if the written val was written to some field in the obj.
-        // If the obj stores the val, then add to the map.
-        for (VarValue fieldVal : fieldsInReferenceVal) {
-            for (VarValue writtenVal : stepOverPrevious.getWrittenVariables()) {
-                if (fieldVal.getStringValue().equals(writtenVal.getStringValue())) {
-                    result.add(writtenVal);
-                }
-            }
-        }
-        return result;
-    }
-
-    private static boolean shouldGetInputsForRefVal(TraceNode referenceValNode) {
-        TraceNode stepOverPrevious = referenceValNode.getStepOverPrevious();
-        if (stepOverPrevious == null) {
-            return false;
-        }
-        if (!referenceValNode.getClassCanonicalName().equals(stepOverPrevious.getClassCanonicalName())) {
-            return false;
-        }
-        if (referenceValNode.getLineNumber() != stepOverPrevious.getLineNumber()) {
-            return false;
-        }
-        return true;
-    }
-
     private static int[] getLineNumsForAssertion(TraceNode assertionTraceNode, File projectRoot) {
         File file = ProjectParser.getFileOfClass(assertionTraceNode.getDeclaringCompilationUnitName(), projectRoot);
         String fileContent;
@@ -470,6 +358,13 @@ public class IOObtainer {
                 result.add(traceNode);
             }
         }
+        return result;
+    }
+
+    private static int hashVarValAndNode(VarValue varValue, TraceNode node) {
+        int result = System.identityHashCode(varValue);
+        result *= 13;
+        result += node.getOrder();
         return result;
     }
 }
