@@ -24,8 +24,8 @@ public class TestIO {
         return inputs;
     }
 
-    public VarValue getOutput() {
-        return output.getValue();
+    public IOModel getOutput() {
+        return output;
     }
 
     public TraceNode getOutputNode() {
