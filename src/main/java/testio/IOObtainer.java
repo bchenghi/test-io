@@ -20,11 +20,7 @@ import testio.model.TestIO;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.Map;
+import java.util.*;
 
 public class IOObtainer {
     public static List<IOModel> getTestOutputs(InstrumentationResult instrumentationResult,
@@ -182,60 +178,69 @@ public class IOObtainer {
                                                      Set<Integer> encounteredVars, Set<TraceNode> nodesToIgnore,
                                                      String testClass, String testSimpleName) {
         Set<IOModel> result = new HashSet<>();
-        int varID = hashVarValAndNode(output, outputNode);
-        if (encounteredVars.contains(varID)) {
-            return result;
-        }
-        encounteredVars.add(varID);
-        TraceNode dataDependency = trace.findDataDependency(outputNode, output);
+        Stack<VarValue> outputsToCheck = new Stack<>();
+        Stack<TraceNode> outputNodesToCheck = new Stack<>();
+        outputsToCheck.add(output);
+        outputNodesToCheck.add(outputNode);
+        while (!outputsToCheck.isEmpty()) {
+            VarValue currentOutput = outputsToCheck.pop();
+            TraceNode currentOutputNode = outputNodesToCheck.pop();
 
-        // For values in top layer that is read
-        if (dataDependency == null) {
-            // Check current node's (read) var for input.
-            if (nodeIsInMethod(outputNode, testClass, testSimpleName) && !nodesToIgnore.contains(output)) {
-                result.add(new IOModel(output, outputNode));
+            int varID = hashVarValAndNode(currentOutput, currentOutputNode);
+            if (encounteredVars.contains(varID)) {
+                continue;
             }
-            return result;
-        }
+            encounteredVars.add(varID);
+            TraceNode dataDependency = trace.findDataDependency(currentOutputNode, currentOutput);
 
-        // For values in top layer that is only written e.g. 2 in funcCall(2).
-        if (dataDependency.getReadVariables().isEmpty()) {
-            if (nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
-                VarValue outputVal;
-                if (dataDependency.getWrittenVariables().contains(output)) {
-                    // Check using var ID.
-                    outputVal = output;
-                } else {
-                    // Check using Alias Var ID (Heap address). For arrays, etc.
-                    outputVal = dataDependency.getWrittenVariables().stream().filter(writtenVarVal ->
-                            writtenVarVal.getVariable().getAliasVarID() != null &&
-                                    writtenVarVal.getVariable().getAliasVarID().equals(output.getVariable().getAliasVarID())).
-                            findFirst().
-                            orElse(null);
+            // For values in top layer that is read
+            if (dataDependency == null) {
+                // Check current node's (read) var for input.
+                if (nodeIsInMethod(currentOutputNode, testClass, testSimpleName) && !nodesToIgnore.contains(currentOutput)) {
+                    result.add(new IOModel(currentOutput, currentOutputNode));
                 }
+                continue;
+            }
 
-                if (outputVal == null) {
-                    return result;
+            // For values in top layer that is only written e.g. 2 in funcCall(2).
+            if (dataDependency.getReadVariables().isEmpty()) {
+                if (nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
+                    VarValue outputVal;
+                    if (dataDependency.getWrittenVariables().contains(currentOutput)) {
+                        // Check using var ID.
+                        outputVal = currentOutput;
+                    } else {
+                        // Check using Alias Var ID (Heap address). For arrays, etc.
+                        outputVal = dataDependency.getWrittenVariables().stream().filter(writtenVarVal ->
+                                        writtenVarVal.getVariable().getAliasVarID() != null &&
+                                                writtenVarVal.getVariable().getAliasVarID().equals(currentOutput.getVariable().getAliasVarID())).
+                                findFirst().
+                                orElse(null);
+                    }
+
+                    if (outputVal == null) {
+                        continue;
+                    }
+
+                    result.add(new IOModel(outputVal, dataDependency));
                 }
-
-                result.add(new IOModel(outputVal, dataDependency));
+                continue;
             }
-            return result;
-        }
 
-        // For intermediate dependency, but value is written in it. i.e. still has parent data dependencies, but value
-        // was written in this traceNode, so must capture.
-        if (dataDependency.getWrittenVariables().contains(output) &&
-                nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
-            TraceNode higherDataDependency = trace.findDataDependency(dataDependency, output);
-            if (higherDataDependency == null) {
-                result.add(new IOModel(output, dataDependency));
+            // For intermediate dependency, but value is written in it. i.e. still has parent data dependencies, but value
+            // was written in this traceNode, so must capture.
+            if (dataDependency.getWrittenVariables().contains(currentOutput) &&
+                    nodeIsInMethod(dataDependency, testClass, testSimpleName) && !nodesToIgnore.contains(dataDependency)) {
+                TraceNode higherDataDependency = trace.findDataDependency(dataDependency, currentOutput);
+                if (higherDataDependency == null) {
+                    result.add(new IOModel(currentOutput, dataDependency));
+                }
             }
-        }
 
-        for (VarValue readVarValue : dataDependency.getReadVariables()) {
-            result.addAll(getInputsFromDataDep(readVarValue, dataDependency, trace, encounteredVars, nodesToIgnore,
-                    testClass, testSimpleName));
+            for (VarValue readVarValue : dataDependency.getReadVariables()) {
+                outputsToCheck.add(readVarValue);
+                outputNodesToCheck.add(dataDependency);
+            }
         }
         return result;
     }
