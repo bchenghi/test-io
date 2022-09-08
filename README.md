@@ -18,6 +18,8 @@ In total, the required arguments are:
 - Test case class and method name
 - Project roots to non-buggy and buggy traces
 
+An example usage is provided in the TraceManger project (See tracemanager.TraceManager in https://github.com/bchenghi/trace-manager
+
 ## How it works (Developers)
 It first obtains the outputs to the test case.
 It utilises the trace with `org.junit.Assert` included, by checking if the trace node contains variable belonging to that class, and it takes the variable with the name indicating it is the output. (e.g. the variable name `actual` for `assertEquals` method)
