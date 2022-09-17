@@ -23,6 +23,8 @@ import java.nio.file.Files;
 import java.util.*;
 
 public class IOObtainer {
+
+    private static Set<String> assertionClasses = new HashSet<>(Arrays.asList("org.junit.Assert", "org.junit.jupiter.api.Assertions", "org.testng.Assert"));
     public static List<IOModel> getTestOutputs(InstrumentationResult instrumentationResult,
                                                InstrumentationResult instrumentationResultWithAssertions) {
 
@@ -260,7 +262,7 @@ public class IOObtainer {
         List<VarValue> writtenVarValues = traceNodeWithAssertion.getWrittenVariables();
         for (VarValue varValue : writtenVarValues) {
             Variable var = varValue.getVariable();
-            if (getVarLocation(var).equals("org.junit.Assert") && varIsOutput(var)) {
+            if (assertionClasses.contains(getVarLocation(var)) && varIsOutput(var)) {
                 // Sometimes the assertion spans multiple lines, the output var may be in a diff line from the assertion call.
                 // Get step over previous node, until the output var is found.
                 // e.g.
@@ -303,7 +305,7 @@ public class IOObtainer {
         List<VarValue> writtenVarValues = node.getWrittenVariables();
         for (VarValue varValue : writtenVarValues) {
             Variable var = varValue.getVariable();
-            if (getVarLocation(var).equals("org.junit.Assert") && varIsOutput(var)) {
+            if (assertionClasses.contains(getVarLocation(var)) && varIsOutput(var)) {
                 return true;
             }
         }
